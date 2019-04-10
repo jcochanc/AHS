@@ -49,4 +49,15 @@ ncol(df) - sum(apply(df, 2, anyNA)) # 354 removed.
 # How to proceed? Suggestion is to remove variables with
 # more than 25% missing.
 
+# For now, we will remove all the data with missingness.
+# This amounts to losing 13% of variables. Are we okay with this?
+sum(apply(df, 2, anyNA))/ncol(df)
 
+# Remove vars with missing.
+missing_index <- which(apply(df, 2, anyNA))
+df <- df[,-missing_index]
+
+# Let's examine what we have.
+names(df)
+
+# CONTROL is sequentially assigned each survey year; drop.
