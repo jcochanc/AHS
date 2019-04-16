@@ -56,8 +56,3 @@ sum(apply(df, 2, anyNA))/ncol(df)
 # Remove vars with missing.
 missing_index <- which(apply(df, 2, anyNA))
 df <- df[,-missing_index]
-
-# Let's examine what we have.
-names(df)
-
-# CONTROL is sequentially assigned each survey year; drop.
