@@ -1,0 +1,352 @@
+---
+title: "test"
+author: "Carolina Velasco"
+date: "11/16/2018"
+output: html_document
+---
+
+```{r}
+library(tm)
+library(pdftools)
+library(dplyr)
+library(tidyverse)
+library(tidytext)
+```
+
+```{r}
+doc <- pdf_text("~/Dropbox (Brown)/AHS Study/AHS codebook 1997-2013 broker.pdf")
+
+doc <- doc %>% strsplit(split = "\n") # separate into pages
+n.pages <- length(lengths(doc)) #number of pages
+
+# Remove Header
+for (i in 1:n.pages){
+  doc[[i]] <- doc[[i]][-c(1,2)] 
+}
+
+# Remove spaces and make one character vector
+doc <- unlist(doc) %>%
+  str_squish() 
+
+# Find index of strings that start with "variable"
+var_start <- grep("^Variable:", doc)
+# Find index of strings that start with "survey years"
+years_start <- grep("^Survey Year\\(s\\):", doc)
+# Find index of strings that start with "table name"
+table_start <- grep("^Table Name:", doc)
+# Find index of strings that come before when "type" starts
+type_start <- grep("^Type:", doc) -1
+# Find index of strings that start with "description"
+description_start <- grep("^Description:", doc)
+# Find index of strings that start with "Edit Flag Variable:"
+editflag_start <- grep("^Edit Flag Variable:", doc)
+# Find index of strings that start with "Availability"
+availability_start <- grep("^Availability:", doc)
+# Some table names and years are in two lines. Identify them and combine them into one character
+extra_lines <- type_start[!(type_start %in% table_start)]
+doc[723-1] <- str_c(doc[723-1], doc[723], sep=" ")
+doc[925-1] <- str_c(doc[925-1], doc[925], sep=" ")
+doc[1332-1] <- str_c(doc[1332-1], doc[1332], sep=" ")
+doc[1354-1] <- str_c(doc[1354-1], doc[1354], sep=" ")
+doc[1375-1] <- str_c(doc[1375-1], doc[1375], sep=" ")
+doc[1442-1] <- str_c(doc[1442-1], doc[1442], sep=" ")
+doc[2139-1] <- str_c(doc[2139-1], doc[2139], sep=" ")
+doc[2656-1] <- str_c(doc[2656-1], doc[2656], sep=" ")
+doc[2679-1] <- str_c(doc[2679-1], doc[2679], sep=" ")
+doc[2923-1] <- str_c(doc[2923-1], doc[2923], sep=" ")
+doc[2942-1] <- str_c(doc[2942-1], doc[2942], sep=" ")
+doc[2961-1] <- str_c(doc[2961-1], doc[2961], sep=" ")
+doc[3002-1] <- str_c(doc[3002-1], doc[3002], sep=" ")
+doc[3021-1] <- str_c(doc[3021-1], doc[3021], sep=" ")
+doc[6191-1] <- str_c(doc[6191-1], doc[6191], sep=" ")
+doc[6213-1] <- str_c(doc[6213-1], doc[6213], sep=" ")
+doc[9888-1] <- str_c(doc[9888-1], doc[9888], sep=" ")
+doc[11404-1] <- str_c(doc[11404-1], doc[11404], sep=" ")
+doc[14559-1] <- str_c(doc[14559-1], doc[14559], sep=" ")
+
+# Keep only variable, table, and year information
+keep_rows <- c(var_start, table_start, years_start, description_start, editflag_start, availability_start) #Bind rows of interest
+keep_rows <- sort(keep_rows)
+doc_info <- doc[keep_rows] # Keep info of interest
+
+# Get all the variable names
+var_start_doc_info <- grep("^Variable:", doc_info)
+var <- doc_info[var_start_doc_info]
+var_names <- rep(NA, length(var))
+for (i in 1:length(var)) {
+  var_names[i] <- str_extract(var[i], "(?<=Variable:\\s).+")
+}
+
+
+# Keep string after description
+description_start_doc_info <- grep("^Description:", doc_info)
+description <- doc_info[description_start_doc_info]
+for (i in description_start_doc_info) {
+  doc_info[i] <- str_extract(doc_info[i], "(?<=^Description:\\s).+")
+}
+
+# Keep string after "Table Name:"
+table_start_doc_info <- grep("^Table Name:", doc_info)
+for (i in table_start_doc_info) {
+  doc_info[i] <- str_extract(doc_info[i], "(?<=^Table\\sName:\\s).+")
+}
+
+# Keep string after "Edit Flag Variable:"
+editflag_start_doc_info <- grep("^Edit Flag Variable:", doc_info)
+for (i in editflag_start_doc_info) {
+  doc_info[i] <- str_extract(doc_info[i], "(?<=^Edit\\sFlag\\sVariable:\\s).+")
+}
+
+# Keep string after "Availability:"
+availability_start_doc_info <- grep("^Availability:", doc_info)
+for (i in availability_start_doc_info) {
+  doc_info[i] <- str_extract(doc_info[i], "(?<=^Availability:\\s).+")
+}
+
+# Keep string after "Survey Years:"
+years_start_doc_info <- grep("^Survey Year\\(s\\):", doc_info)
+for (i in years_start_doc_info) {
+  doc_info[i] <- str_replace_all(doc_info[i], ";", ",") # replace semicolons with commas
+  doc_info[i] <- str_extract(doc_info[i], "(?<=^Survey\\sYear\\(s\\):\\s).+")
+}
+
+# Check if variable names were extracted correctly
+# var_names[which(duplicated(var_names))]
+# length(unique(var_names))
+
+# Store info for each variable in a list
+variable_list <- split(doc_info, findInterval(1:length(doc_info), var_start_doc_info))
+names(variable_list) <- var_names # rename each list element with variable name 
+
+# Create a data frame 
+df <- data.frame(text = unlist(variable_list, use.names = FALSE), stringsAsFactors = FALSE)
+df$var <- factor(rep(names(variable_list), sapply(variable_list, length)))
+df$var <- factor(df$var, levels = unique(df$var))
+structure(df, class = c("tbl_df", "tbl", "data.frame"))
+
+# Drop rows that contain variable names
+df <- df[-var_start_doc_info,]
+rownames(df) <- seq(length=nrow(df)) #reset row number
+
+# Some variables have missing info on table name. Replace NA with "NOINFO"
+missing_table <- which(is.na(df$text))
+df$text[missing_table] <- "NOINFO"
+```
+
+
+```{r}
+# Some variables have the dataset and years in the same row, but others have the years missing next to the dataset name. Merge them.
+df_names <- paste(c("^ALL", "NEWHOUSE", "TYPEC", "HOUSHLD", "WEIGHT", "TOPPUF", "PERSON", "OWNER", "RMOV", "RATIOV", "REPWGT", "TOPICAL", "JTW", "NOINFO$"), collapse = '$|^')
+missing_year <- which(str_detect(df$text, df_names))
+
+for (i in missing_year){
+  df$text[i] <- str_c(df$text[i], "(", df$text[i+3], ")", sep="") # i+3 are the rows for survey year(s)
+}
+
+# #Check:
+#df$text[miss_year]
+
+# drop rows with years
+only_year <- which(!str_detect(df$text, "^[[:upper:]]")) # identify strings that only include the years
+df <- df[-only_year,]
+
+
+# Unnest tokens
+tidy_df <- df %>%
+  group_by(var) %>%
+  unnest_tokens(word, text) %>%
+  ungroup()
+
+# Reshape tidy_df such that there is one column for dataframe and one column for year 
+years <- tidy_df %>%
+  filter(row_number() %% 2 == 0) %>% # get even number of columns per variable, which contain the years
+  rename(years=word) %>%
+  select(years) 
+
+dataset <- tidy_df %>%
+  filter(row_number() %% 2 != 0) %>% # get odd number of columns per variable, which contain the dataset
+  rename(dataset=word) 
+
+tidy_df <- cbind(dataset, years) # merge them
+  
+
+
+# # Find maximum number of years 
+# y <- gsub(",","",tidy_df$years) # remove commas from years
+# max(str_length(y))/4 # get maximum number of years 
+
+# Get data into the right form
+tidy_df <- tidy_df %>% 
+  separate(years, into = paste("year", c(1:14), sep=""), sep = ",", extra = "merge", fill = "right") %>%  # Separate years into multiple columns 
+  gather(Dataset, years, year1:year14, na.rm=TRUE) %>% # Gather such that there is one row per year per dataset  
+  select(-Dataset)
+
+
+# Keep variables of interest for my PI
+var_interest <- c("CONTROL", "STATUS", "DATE", "HISTRY", "HUHIS", "RESPTYP", "REUAD", "SAMEDU", "SAMEHH", "SAMEHH2", "CMSA", "METRO", "METRO3", "PMSA", "REGION", "SMSA", "WEIGHT", "BBLDG", "BOARDU", "DFIRE", "DISAS", "EXPOSE", "NOINT", "TENURE", "CONDO", "OWNLOT", "TEN", "OWNHERE", "VACANCY", "VACANC2", "TIMSHR", "VACVAC", "MHSTAY", "MOVAC", "MOPERM", "YRRND", "NUNITS", "TYPE", "NUNIT2", "BUILT", "ELEV", "ELEVWK", "FRSIT", "LAT70S", "MH32", "GARAGE", "PORCH", "NOSTEP", "LOT", "EBAR", "ACCESSB","MOBILTYP", "ANCHOR", "ACCESS", "ACCESSC", "CLIMB", "INCP", "DINING", "LAUNDY", "LIVING", "CELLAR", "DENS", "OTHFN", "FLOORS", "UNITSF", "APTFL", "KITCH", "ROOMS", "BEDRMS", "BEDX", "FAMRM", "RECRM", "OBEDRM", "BATHS", "HALFB", "OTHRUN", "SHARPF", "KITCHEN", "KEXCLU", "BSINK", "TOILET", "TUB", "MHSETQ", "HEQUIP", "HFUEL", "FPLWK", "AFUR", "COKST", "ELECT", "FLIN", "FLOT", "FPINS", "FRPL", "FRPLI", "GASPIP", "HOTH", "HPMP", "NONE", "PLF", "PORTH", "STEAM", "STOVE", "AFUEL", "AIR", "AIRSYS", "NUMAIR", "OAFUEL", "OARSYS", "SEWDUS", "WATER", "SEWDIS", "WFUEL", "CFUEL", "REFR", "DISH", "SINK", "WASH", "DRY", "BURNER", "COOK", "DFUEL", "DISPL", "OVEN", "PHONE", "TRASH", "NOWIRE", "PLUGS", "IFBLOW", "NUMBLOW", "FREEZE", "IFCOLD", "NUMCOLD", "WHYCD1", "WHYCD2", "WHYCD3", "WHYCD4", "WHYCD5", "OTHCLD", "IFTLT", "NUMTLT", "IFDRY", "NUMDRY", "HOTPIP", "IFSEW", "NUMSEW", "PLUMB", "PUBSEW", "EVROD", "MICE", "RATS", "NOTSUR", "BIGP", "ECRUMB", "EHOLER", "EMISSR", "ESAGR", "EMISSW", "ESLOPW", "EBOARD", "EBROKE", "HOLES", "CRACKS", "LEAK", "RLEAK", "BLEAK", "WLEAK", "OTLEAK", "ILEAK", "PLEAK", "PILEAK", "NLEAK1", "NLEAK2", "BLDMNT", "GRDMNT", "MAJR1", "MAJR2", "MAJR3", "MINR1", "MINR2", "MINR3", "ZADEQ", "EGOOD", "LTSOK", "PER", "ZADULT", "FRSTOC", "HERE", "HCARE", "HERRND", "HHEAR", "HMEMRY", "HSEE", "HWALK", "HHSEX", "HHAGE", "HHMAR", "HHRACE", "HHSPAN", "HHCITSHP", "HHNATVTY", "HHINUSYR", "HHMOVE", "HHGRAD", "HHMOVM", "HHREL", "HHTEN", "PLINE", "REL", "SEX", "AGE", "MAR", "RACE", "SPAN", "CITSHP", "NATVTY", "PERSON", "MOVE", "MOVM", "GRAD", "FAMREL", "FAMTYP", "SPOS", "PAR", "DLINE1", "FAMNUM", "CROPSL", "ZINC2", "ZINC", "QFS1", "QALIM", "QINT", "QOTHER", "QRENT", "QSS", "QWELF", "QWKCMP", "VOTHER", "ZINCH", "ZINCN", "SAL", "RENT", "AMTX", "AMTI", "CONFEE", "FLRENT", "FMHOTF", "FOOD", "FRENT", "IFFEE", "IFOTHF", "INCS", "LODRNT", "LODSTA", "LRENT", "MHOTFE", "NROWNR", "NRPAYM", "PRENT", "RNTADJ", "RNTDUE", "TXRE", "BUYI", "ZSMHC", "LANPMT", "AMTE", "AMTF", "AMTG", "AMTO", "AMTT", "AMTW", "BILLF", "BILLFE", "BILLFG", "BILLFO", "BILLFT", "BILLFW", "BILLG", "BILLGE", "BILLGF", "BILLGO", "BILLGT", "BILLGW", "BILLO", "BILLOE", "BILLOF", "BILLOG", "BILLOT", "BILLOW", "BILLT", "BILLTE", "BILLTF", "BILLTG", "BILLTO", "BILLTW", "BILLW", "BILLWE", "BILLWF", "BILLWG", "BILLWO", "BILLWT", "BUYE", "BUYE2", "BUYF", "BUYF2", "BUYG", "BUYG2", "BUYO", "BUYO2", "BUYT", "BUYT2", "BUYW", "BUYW2", "USEGAS", "USELECT", "USEOIL", "USEOTHR", "HUDSAMP", "HUDADMIN", "RCNTRL", "PROJ", "RENEW", "SUBRNT", "VCHER", "FMR", "IPOV", "L50", "L80", "LMED", "WHNGET", "CUSHOM", "DWNPAY", "FRSTHO", "VALUE", "MARKT", "MARKET", "CPRICE", "LPRICE", "LVALUE", "PVALUE", "REGMOR", "TREP", "NUMMOR", "PREOCC", "MCNT", "MG", "TADJ", "EPRKG", "EGREEN", "EAGE", "EABAN", "EJUNK", "ECOM2", "EBARCL", "ECOM1", "WFPROP", "EWATER", "EROAD", "ETRANS", "HOWH", "HOWN", "BADPER", "BADPRP", "BADSRV", "ALMV", "MVG", "TLRMOV", "WELL", "WELDUS", "WATERS", "WATERD", "TPBPIP", "TPBSOL", "TPBPAI", "CARS", "TRUCKS", "USETRN")
+
+# Select variables of interest
+tidy_df_var_interest <- tidy_df %>%
+  filter(var %in% var_interest)
+# # Check
+# length(unique(tidy_df_var_interest$var))
+
+# Save dataframe
+write.csv(tidy_df_var_interest,file="~/Dropbox (Brown)/AHS Study/var_of_interest_by_dataset.csv")
+```
+
+# Update 02/10
+## Add description, edit flag, and availability
+```{r}
+doc <- pdf_text("~/Dropbox (Brown)/AHS Study/AHS codebook 1997-2013 broker.pdf")
+
+doc <- doc %>% strsplit(split = "\n") # separate into pages
+n.pages <- length(lengths(doc)) #number of pages
+
+# Remove Header
+for (i in 1:n.pages){
+  doc[[i]] <- doc[[i]][-c(1,2)] 
+}
+
+# Remove spaces and make one character vector
+doc <- unlist(doc) %>%
+  str_squish() 
+
+# Find index of strings that start with "variable"
+var_start <- grep("^Variable:", doc)
+# Find index of strings that start with "description"
+description_start <- grep("^Description:", doc)
+# Find index of strings that start with "Edit Flag Variable:"
+editflag_start <- grep("^Edit Flag Variable:", doc)
+# Find index of strings that start with "Availability"
+availability_start <- grep("^Availability:", doc)
+
+
+# Keep only variable, table, and year information
+keep_rows <- c(var_start, description_start, editflag_start, availability_start) #Bind rows of interest
+keep_rows <- sort(keep_rows)
+doc_info <- doc[keep_rows] # Keep info of interest
+
+# Get all the variable names
+var_start_doc_info <- grep("^Variable:", doc_info)
+var <- doc_info[var_start_doc_info]
+var_names <- rep(NA, length(var))
+for (i in 1:length(var)) {
+  #var_names[i] <- str_extract(var[i], "(?<=Variable:\\s)[:upper:]+")
+  var_names[i] <- str_extract(var[i], "(?<=Variable:\\s).+")
+}
+
+
+# Keep string after description
+description_start_doc_info <- grep("^Description:", doc_info)
+description <- doc_info[description_start_doc_info]
+for (i in description_start_doc_info) {
+  doc_info[i] <- str_extract(doc_info[i], "(?<=^Description:\\s).+")
+}
+
+# Keep string after "Edit Flag Variable:"
+editflag_start_doc_info <- grep("^Edit Flag Variable:", doc_info)
+for (i in editflag_start_doc_info) {
+  doc_info[i] <- str_extract(doc_info[i], "(?<=^Edit\\sFlag\\sVariable:\\s).+")
+}
+
+# Keep string after "Availability:"
+availability_start_doc_info <- grep("^Availability:", doc_info)
+for (i in availability_start_doc_info) {
+  doc_info[i] <- str_extract(doc_info[i], "(?<=^Availability:\\s).+")
+}
+
+
+# Store info for each variable in a list
+variable_list <- split(doc_info, findInterval(1:length(doc_info), var_start_doc_info))
+names(variable_list) <- var_names # rename each list element with variable name 
+
+# Create a data frame 
+df <- data.frame(text = unlist(variable_list, use.names = FALSE), stringsAsFactors = FALSE)
+df$var <- factor(rep(names(variable_list), sapply(variable_list, length)))
+df$var <- factor(df$var, levels = unique(df$var))
+structure(df, class = c("tbl_df", "tbl", "data.frame"))
+
+# Drop rows that contain variable names
+df <- df[-var_start_doc_info,]
+rownames(df) <- seq(length=nrow(df)) #reset row number
+
+# Some variables have missing info on table name. Replace NA with "NOINFO"
+missing_table <- which(is.na(df$text))
+df$text[missing_table] <- "NOINFO"
+
+
+# Reshape tidy_df such that there is one column for each feature
+availability <- df %>%
+  filter(row_number() %% 3 == 0) %>% # get rows that contain the years (3,6,9)
+  rename(availability=text) %>%
+  select(availability) 
+
+# Reshape tidy_df such that there is one column for each feature
+description <- df %>%
+  filter(row_number() %in% seq(1,nrow(df), 3)) %>% # get rows that contain description
+  rename(description=text) %>%
+  select(description) 
+
+# Reshape tidy_df such that there is one column for each feature
+editflat <- df %>%
+  filter(row_number() %in% seq(2,nrow(df), 3)) %>% # get rows that contain editflat
+  rename(editflat=text) %>%
+  select(editflat) 
+
+tidy_df <- cbind(var_names,description, editflat, availability) # merge them
+# Save dataframe
+write.csv(tidy_df,file="~/Dropbox (Brown)/AHS Study/var_of_interest_by_dataset.csv")
+```
+
+
+# Update 04/11 for Big Data Project
+## Codebook of vars of interest for Quality index
+```{r}
+tidy_df <- read.csv("~/Dropbox (Brown)/AHS Study/var_of_interest_by_dataset.csv")
+
+vars.zadeq.bathrooms <- c("PLUMB", "HOTPIP", "TUB", "TOILET", "SHARPF")
+vars.zadeq.heating <- c("HEQUIP", "FREEZE", "IFCOLD", "NUMCOLD", "OTHCLD", "WHYCLD", "WHYCLD1", "WHYCLD2", "WHYCLD3", "WHYCLD4", "WHYCLD5")
+vars.zadeq.elect.wiring <- c("BUYE", "NOWIRE", "PLUGS", "IFBLOW", "NUMBLOW")
+vars.zadeq.outside.leak <- c("LEAK", "RLEAK", "WLEAK", "BLEAK", "OTLEAK")
+vars.zadeq.inside.leak <- c("ILEAK", "PILEAK", "PLEAK","NLEAK", "NLEAK1", "NLEAK2")
+vars.zadeq.walls.floors.ceilings <- c("HOLES", "CRACKS", "BIGP")
+vars.zadeq.rodents.toilet <- c("EVROD", "RATS", "IFTLT", "NUMTLT")
+vars.zadeq.kitchens <- c("KITCHEN", "COOK", "OVEN", "BURNER", "REFR", "SINK", "KEXCLU")
+vars.zadeq.structure <- c("EBROKE", "BOARD", "EBOARD", "ECRUMB", "EHOLER", "EMISSR", "EMISSW", "ESAGR", "ESLOPW", "EGOOD", "ENOB")
+vars.zadeq.stair <- c("CLIMB", "ELEV")
+vars.zadeq.problems.outside <- c("IFDRY", "NUMDRY", "IFSEW", "NUMSEW", "EBAR")
+vars.zadeq.overall.quality <- c("HOWH")
+  
+vars.additional <- c("CELLAR", "FPLWK", "AFUR", "COKST", "ELECT", "FLIN", "FPINS", "FRPL", "FRPLI", "GASPIP", "HOTH", "HPMP", "NONE", "PLF", "PORTH", "STEAM", "STOVE", "AFUEL", "AIR", "AIRSYS", "NUMAIR", "OAFUEL", "OARSYS", "WATER", "SEWDIS", "WFUEL", "CFUEL", "PHONE", "PUBSEW")
+
+vars.zadeq.all <- c(vars.zadeq.bathrooms, vars.zadeq.heating, vars.zadeq.elect.wiring, vars.zadeq.outside.leak, vars.zadeq.inside.leak, vars.zadeq.walls.floors.ceilings, vars.zadeq.rodents.toilet, vars.zadeq.kitchens, vars.zadeq.structure, vars.zadeq.stair, vars.zadeq.problems.outside, vars.zadeq.overall.quality)
+
+
+# # check whether there are duplicates
+# sum(duplicated(vars.zadeq.all)) # check
+# sum(duplicated(vars.additional)) # check
+
+
+#### Merge dasets
+# Merge zadeq variables with codebook
+vars.zadeq.all <- data.frame(var_names= vars.zadeq.all)
+tidy_df_var_interest_zadeq <-  left_join(vars.zadeq.all, tidy_df, by = "var_names")
+tidy_df_var_interest_zadeq <- tidy_df_var_interest_zadeq[,-c(2)]
+sum(is.na(tidy_df_var_interest_zadeq$description)) # 9 variables missing
+
+# Merge additional variables to codebook
+vars.additional <- data.frame(var_names= vars.additional)
+tidy_df_var_interest_additional <-  left_join(vars.additional, tidy_df, by = "var_names")
+tidy_df_var_interest_additional <- tidy_df_var_interest_additional[,-c(2)]
+sum(is.na(tidy_df_var_interest_additional$description)) 
+
+# Save dataframe
+write.csv(tidy_df_var_interest_zadeq, file="~/Dropbox (Brown)/AHS Study/var_of_interest_zadeq.csv")
+write.csv(tidy_df_var_interest_additional, file="~/Dropbox (Brown)/AHS Study/var_of_interest_additional.csv")
+
+# Check: There at 9 varialbles missing
+# nrow(tidy_df_var_interest_quality) - nrow(tidy_df %>% filter(var_names %in% vars.zadeq.all))
+# sum(is.na(tidy_df_var_interest_quality$description)) 
+```
+
