@@ -6,15 +6,11 @@ output: html_document
 ---
 
 ```{r}
-library(tm)
-library(pdftools)
-library(dplyr)
-library(tidyverse)
-library(tidytext)
+pacman::p_load(tm, pdftools, dplyr, tidyverse, tidytext)
 ```
 
 ```{r}
-doc <- pdf_text("~/Dropbox (Brown)/AHS Study/AHS codebook 1997-2013 broker.pdf")
+doc <- pdf_text("./variable_selection/Codebooks/AHS codebook 1997-2013 broker.pdf")
 
 doc <- doc %>% strsplit(split = "\n") # separate into pages
 n.pages <- length(lengths(doc)) #number of pages
