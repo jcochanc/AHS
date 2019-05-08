@@ -1,4 +1,6 @@
 library(nnet)
+library(kableExtra)
+library(knitr)
 
 data <- readRDS("./Data/train.RDS") # read training data
 data <- data[-which(is.na(data$housing_qual_index_alternative)),] # remove 2460 rows with NA's
@@ -18,4 +20,5 @@ summary_multinom <- data.frame(t(multinom_coef), t(p)) # summary table for ordin
 colnames(summary_multinom) <- c("0-1 coef.", "1-2 coef.", "2-3 coef.", 
                                 "0-1 p-val.", "1-2 p-val.", "2-3 p-val.")
 
+table <- kable(round(summary_multinom,4), bookmarks=TRUE)
 saveRDS(summary_multinom, "./Data/summary_multinom.RDS")
