@@ -1,0 +1,445 @@
+---
+title: "pca"
+author: "Carolina Velasco"
+date: "3/21/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+# Libraries.
+pacman::p_load(dplyr, tidyr, ggplot2, haven, corrplot, FactoMineR, factoextra, caret)
+```
+
+# Take random sample of 20% of the data
+```{r, eval = FALSE}
+set.seed(14)
+
+# Read original data
+df <- read_dta("~/Dropbox (Brown)/AHS Study/ahs_allyears_demographics.dta")
+
+# We will take 20% of the data.
+nrows_to_sample <- ceiling(20*nrow(df)/100)
+
+# Sample the rows.
+subject_index <- sample(1:nrow(df), nrows_to_sample)
+
+# Reduce the data.
+df_20perc <- df[subject_index,]
+
+# Save data
+saveRDS(df_20perc, "./Data/sample_df_20perc.RDS")
+```
+
+
+# Remove variables with more than 25% missing
+```{r}
+# Load the sample data.
+df <- readRDS("~/AHS/Data/sample_df_20perc.RDS")
+
+# Explore missingness
+sum(apply(df, 2, anyNA)) # 60 variables with any missingness.
+sum(colMeans(is.na(df)) > 0.25) # 45 variables have more than 25% of missingness
+
+# Remove _h and _p from variable names
+colnames(df) <- sub("_h$|_p", "", colnames(df))
+
+# Remove variables with more than 25% missing
+df_nona <- df[, -which(colMeans(is.na(df)) > 0.25)]
+
+# keep record of variables with more than 25% missingness
+removed_vars <- names(which(colMeans(is.na(df)) > 0.25))
+```
+
+# Select variables of interest
+
+```{r}
+# Variables used to contruct zadeq variable, separated by categories
+## According to paper "Housing Adequacy and Quality as Measured by the AHS
+vars_zadeq_bathrooms <- c("PLUMB", "HOTPIP", "TUB", "TOILET", "SHARPF")
+vars_zadeq_heating <- c("HEQUIP", "FREEZE", "IFCOLD", "NUMCOLD", 
+                        "OTHCLD")
+vars_zadeq_elect_wiring <- c("BUYE", "NOWIRE", "PLUGS", "IFBLOW", "NUMBLOW")
+vars_zadeq_outside_leak <- c("LEAK", "RLEAK", "WLEAK", "BLEAK", "OTLEAK")
+vars_zadeq_inside_leak <- c("ILEAK", "PILEAK", "PLEAK", "NLEAK1", 
+                            "NLEAK2")
+vars_zadeq_walls_floors_ceilings <- c("HOLES", "CRACKS", "BIGP")
+vars_zadeq_rodents_toilet <- c("EVROD", "RATS", "IFTLT", "NUMTLT")
+vars_zadeq_kitchens <- c("KITCHEN", "COOK", "OVEN", "BURNER", "REFR", "SINK", 
+                         "KEXCLU")
+vars_zadeq_structure <- c("EBROKE", "EBOARD", "ECRUMB", "EHOLER", 
+                          "EMISSR", "EMISSW", "ESAGR", "ESLOPW", "EGOOD")
+vars_zadeq_stair <- c("ELEV")
+vars_zadeq_problems_outside <- c("IFDRY", "NUMDRY", "IFSEW", "NUMSEW", "EBAR")
+vars_zadeq_overall_quality <- c("HOWH")
+
+
+# Potential aditional variables of interest
+vars_additional <- c("FPLWK", "AFUR", "COKST", "ELECT", "FLIN", "FPINS", "FRPL", 
+                     "FRPLI", "GASPIP", "HOTH", "HPMP", "NONE", "PLF", "PORTH", 
+                     "STEAM", "STOVE", "AFUEL", "AIR", "AIRSYS", "OARSYS", 
+                     "WATER", "SEWDIS", "WFUEL", "CFUEL", "PHONE", "PUBSEW")
+
+# Put all variables of interest into one vector
+vars_quality_index <- tolower(c(vars_zadeq_bathrooms, vars_zadeq_heating, vars_zadeq_elect_wiring, 
+                                vars_zadeq_outside_leak, vars_zadeq_inside_leak, 
+                                vars_zadeq_walls_floors_ceilings, vars_zadeq_rodents_toilet, 
+                                vars_zadeq_kitchens, vars_zadeq_structure, vars_zadeq_stair, 
+                                vars_zadeq_problems_outside, vars_zadeq_overall_quality, vars_additional))
+
+# Select variables of interest
+df_quality_vars <- df_nona %>% select(vars_quality_index)
+```
+
+```{r, eval=FALSE}
+# Save the data
+saveRDS(df_quality_vars, "./Data/sample_df_20perc_vars_selected.RDS")
+```
+
+
+# Data cleaning
+```{r}
+df_quality_vars <- readRDS("~/AHS/Data/sample_df_20perc_vars_selected.RDS")
+
+# According to the codebook: In 2011, the response codes changed from 'X' (positive response) to '1' (checked) and '2' (not checked). Change the X to 1 = checked response
+convert_X_to_1 <- function(x) {
+  ifelse(x == "X", 1, x)
+}
+
+df_quality_vars <- as.data.frame(apply(df_quality_vars, 2, convert_X_to_1))
+
+summary(df_quality_vars)
+
+# Number of factors in each variable
+cats <- apply(df_quality_vars, 2, function(x) nlevels(as.factor(x)))
+cats
+```
+
+
+# Lump "Not applicable", "Don't know", "Not reported", and "Refused" to same category for all variables.
+```{r}
+# Lump all together into one category = -1
+lumped_category <- function(x) {
+  ifelse(x == "-6" | x == "B" | x == "-9" | x == "-7" | x == "D" | x == "-8" | x == "R" | x == "", -1, x)
+}
+
+df_quality_vars_lumped <- as.data.frame(apply(df_quality_vars, 2, lumped_category))
+
+
+# Find percentage of "Not applicable", "Not reported", "Don't know", and "Refused" 
+lumped_category_perc <- function(x) {
+  length(which(x == "-1"))/nrow(df_quality_vars_lumped)*100
+}
+perc_not_reported <- apply(df_quality_vars_lumped, 2, lumped_category_perc)
+
+# for 40 variables, the lumped category accounts for more than 25% of responses  
+length(which(perc_not_reported>25)) 
+
+#############################
+# Remove 40 variables. We're left with 41 variables to be used for in the index. 
+#############################
+
+df_quality_vars_lumped_reduced <- df_quality_vars_lumped[,-which(perc_not_reported>25)]
+
+# keep record of variables with more than 25% of lumped category
+removed_vars_not_reported <- names(which(perc_not_reported>25))
+```
+
+
+# Correlation plot
+
+The correlation plot below displays what we would expect: 
+
+* Variables related to bathrooms are highly correlated. Specifically, *sharpf* is negatively correlated with *plumb*, *hotpip*, *toilet*, *tub*. Additionally, *toilet* is positively correlated with *plump*, *hotpip*, and *tub*. Finally,  *tub* and *hotpit* are also positively correlated.  
+* Variables related to external structure problems, *ecrumb*, *ebar*, *ebroke*, *eboard*, *emissw*, *eslopw*, *emissr*, *eholer*, and *esagr*, are all highly and positively correlated with each other. 
+
+* *sink* is positively correlated with *tub*, *toilet*, *kitchen*, *refr*, and *cook*.
+
+* *Ifdry* (unit completely without running water) and *iftlt* (any toilet breakdowns in past 3 months) are each negatively correlated with *hotpip*, *toilet*, *tub*. 
+
+* *Air* (room air conditioner) and *airsys* (central air conditioner) are negatively correlated. 
+
+Interestingly, the variable *howh*, which corresponds to the question "On a scale of 1 to 10, how would you rate your unit as a place to live?", is not significantly related to any variable. 
+
+```{r}
+# Convert all variables to numeric
+df_quality_vars_lumped_reduced_num <- as.data.frame(apply(df_quality_vars_lumped_reduced, 2, as.numeric))
+
+summary(df_quality_vars_lumped_reduced_num)
+
+# Plot correlations
+cor.mat <- round(cor(df_quality_vars_lumped_reduced_num, use = "complete.obs"),2)
+corrplot(cor.mat, type="upper", order="hclust", 
+         tl.col="black", tl.srt=45)
+```
+
+
+# PCA
+
+Principal Component Analysis (PCA) is a non-supervized statistical method that performs dimensionality reduction. Although PCA is designed for continuous variables, it works well with binary variables. Several of our variables of interest are binary, so we use PCA to build the housing quality index. 
+
+```{r}
+# Apply PCA
+result_pca <- PCA(df_quality_vars_lumped_reduced_num, scale.unit=TRUE, ncp=6, graph=F)
+```
+
+
+We choose the smallest number of principal components that explain a sizable amount of the variation in the data. The scree plot displayed in Figure _ depicts the proportion of variance explained (PVE) by each of the ten principal components. The plot presents an elbow after the 4th component. Given that we find interesting patterns in the data, we select a total of 6 principal components. The cumulative PVE explained by the components is displayed in Figure ___. We see that, all together, the six principal components explain 53% of the variation in the data. 
+
+```{r}
+# Make a scree plot: Plot the percentage of variance explained by each component
+fviz_screeplot(result_pca, ncp=10)
+```
+
+```{r}
+######## Choosing the number of principal components ######## 
+# Eigenvalues: correspond to the amount of the variation explained by each principal component (PC). 
+eigenvalues <- result_pca$eig
+
+pve <- as.data.frame(eigenvalues[1:6,])
+
+plot(x = c(1:6), y=pve[,3], main = "Cumulative Proportion of Variance Explained", xlab="Principal Component", ylab="Cumulative PVE", xlim = c(1, 6), ylim=c(0,60), type="b", col="red")
+```
+
+Figures ___, ___, and ___ illustrate the correlation between and the contribution of each variable and the principal components. We see that the variables most correlated with the first component are those related to external structure problems, (i.e. *ecrumb*, *ebar*, *ebroke*, *eboard*, *emissw*, *eslopw*, *emissr*, *eholer*, and *esagr*). These suggest the lower quartile are good.
+
+The second component is highly correlated with variables related to bathroom facilities (i.e. *toilet*, *tub*, *sink*), plumbling conditions (i.e. *plumb*, *sharpf*), and water availability (i.e. *ifdry*, *hotpip*). 
+
+The third principal component is  correlated with inside and outside water leaks (i.e. *ileak*, *leak*), as well as with electrical circuit breakers (i.e. *iflow*). Positive values for these variables are bad quality housing. Therefore we need to look at the bottom quartile to determine good housing.
+
+The fourth  component is correlated with variables related to the air conditioning and heating systems in the house (i.e. *airsys*, *air*, *hequip*, and *fplwk*). The fifth principal component represents kitchen  appliances (i.e. *kitchen*, *sink*, *refr*, *cook*). Finally, the sixth component represent sewage and water sources (i.e.*pubsew* and *water*). 
+
+
+```{r}
+######## Analyzing the four components ######## 
+
+# Identify the most correlated variables with a given principal component.
+dimdesc(result_pca, axes=c(1,2))
+dimdesc(result_pca, axes=c(3,4))
+dimdesc(result_pca, axes=c(5,6))
+
+# Compute variable loadings 
+var_loadings <- sweep(result_pca$var$coord,2,sqrt(result_pca$eig[1:ncol(result_pca$var$coord),1]),FUN="/")
+
+# Contributions of the variables to the principal components. Variable contributions = (var.cos2 * 100) / (total cos2 of the component). Recall: The contribution of a point to the inertia of an axis is the quotient between the inertia of its projection and the inertia of the whole scatterplot's projection on this axis. 
+head(result_pca$var$contrib)
+
+# Plot variables and the correlations. The color gradient indicates variable contribution 
+fviz_pca_var(result_pca, 
+             axes = c(1, 2),
+             col.var="contrib", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+fviz_pca_var(result_pca, 
+             axes = c(3, 4),
+             col.var="contrib", 
+             #repel = TRUE,    # Avoid text overlapping
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
+             )
+
+
+fviz_pca_var(result_pca, 
+             axes = c(5, 6),
+             col.var="contrib", 
+             #repel = TRUE,     # Avoid text overlapping
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
+             )
+```
+
+
+# Building the index
+
+We build the composite housing quality index as the weighted sum of the obtained dimension scores for each household (Sekhar, Indrayan, & Gupta, 1991; Antony & Visweswara Rao, 2007). Specifically, we compute a non-standardized composite index (NSCI) for observation $j$ using the PVE explained by each component, $i$, as weights: 
+
+$$
+\textrm{NSCI}_j = \sum_{i=1}^6 \frac{\textrm{PVE}_{\textrm{Comp i}}}{\textrm{Total PVC}} \times \textrm{Score}_{\textrm{Comp i}}
+$$
+
+As seen in Figure ___, the index follows a bimodal normal distribution. There are several outliers on the extreme right. 
+
+```{r}
+# Scores (i.e. principal coordinates) for each observation
+scores <- as.data.frame(result_pca$ind$coord)
+
+## Import data from SPSS
+total_pvc <- pve[6,3]
+hq_index <- ((pve[1,2]*scores[,1]) + (pve[2,2]*scores[,2]) + (pve[3,2]*scores[,3]) + (pve[4,2]*scores[,4]) + (pve[5,2]*scores[,5]) + (pve[6,2]*scores[,6]))/total_pvc
+
+
+hist(hq_index, breaks=100)
+summary(hq_index)
+
+length(which(hq_index>5))
+```
+
+
+We standardize the index (SI) to a range from 0 to 10 (lowest to highest housing quality), as follows:
+
+$SI_j = \frac{NSCI_j-Min(NSCI)}{Max(NSCI)-Min(NSCI)} * 10$
+
+```{r}
+std_hq_index <- (hq_index-min(hq_index)) / (max(hq_index)-min(hq_index)) * 10
+summary(std_hq_index)
+
+hist(std_hq_index, breaks=100)
+```
+
+
+```{r}
+# Create dataset that contains component scores and standardized index
+df_index <- scores %>% mutate(housing_qual_index = std_hq_index)
+```
+
+# Alternative way to build the index
+```{r}
+# Compute variable loadings 
+var_loadings <- sweep(result_pca$var$coord,2,sqrt(result_pca$eig[1:ncol(result_pca$var$coord),1]),FUN="/")
+var_loadings <- data.frame(var_loadings)
+var_loadings$var <- rownames(var_loadings)
+rownames(var_loadings) <- c(1:nrow(var_loadings))
+var_loadings <- var_loadings %>% select(var, Dim.1, Dim.2, Dim.3, Dim.4, Dim.5, Dim.6)
+var_loadings
+
+# Find component "scores" for each individual based on the variable loadings and the individuals' variable value 
+indv_var_values <- as.matrix(df_quality_vars_lumped_reduced_num) # individuals' variable value
+comp1_score <- indv_var_values %*% var_loadings$Dim.1
+comp2_score <- indv_var_values %*% var_loadings$Dim.2
+comp3_score <- indv_var_values %*% var_loadings$Dim.3
+comp4_score <- indv_var_values %*% var_loadings$Dim.4
+comp5_score <- indv_var_values %*% var_loadings$Dim.5
+comp6_score <- indv_var_values %*% var_loadings$Dim.6
+
+
+# Convert scores to binary variables according to threshold (75% quartile)
+comp1_score_binary <- ifelse(comp1_score < quantile(comp1_score, c(0.25), na.rm = TRUE), 1, 0)
+comp2_score_binary <- ifelse(comp2_score > quantile(comp2_score, c(0.75), na.rm = TRUE), 1, 0)
+comp3_score_binary <- ifelse(comp3_score < quantile(comp3_score, c(0.25), na.rm = TRUE), 1, 0)
+comp4_score_binary <- ifelse(comp4_score > quantile(comp4_score, c(0.75), na.rm = TRUE), 1, 0)
+comp5_score_binary <- ifelse(comp5_score > quantile(comp5_score, c(0.75), na.rm = TRUE), 1, 0)
+comp6_score_binary <- ifelse(comp6_score > quantile(comp6_score, c(0.75), na.rm = TRUE), 1, 0)
+
+# Create index as the sum of the binary scores. The index should have a range 0 - 6. However, similar to what was seen in the first housing quality index that was created, only 0.04036582% of the data has scores above 4. Additionally, this method of creating the index does not account for missing values. A total of 3089 observations have missing values and, hence, are not assigned an index.
+
+hq_index2 <- comp1_score_binary + comp2_score_binary + comp3_score_binary + comp4_score_binary + comp5_score_binary + comp6_score_binary
+
+summary(hq_index2)
+length(which(hq_index2 > 4))*100/nrow(df_quality_vars_lumped_reduced_num) # only 0.04% of the data has scores above 4
+hist(hq_index2)
+
+length(which(is.na(hq_index2))) # observations missing index
+
+
+
+######### I computed min and max but don't think this is necessary ######### 
+# # Find "true" min and "true" max for each component based on min and max of each variable
+# # Find maximum and minimum value of the variables included
+# min_val_vars <- apply(df_quality_vars_lumped_reduced_num, 2, min, na.rm=TRUE)
+# max_val_vars <- apply(df_quality_vars_lumped_reduced_num, 2, max, na.rm=TRUE)
+# 
+# comp1_min <- sum(var_loadings$Dim.1 * min_val_vars)
+# comp1_max <- sum(var_loadings$Dim.1 * max_val_vars)
+# 
+# comp2_min <- sum(var_loadings$Dim.2 * min_val_vars)
+# comp2_max <- sum(var_loadings$Dim.2 * max_val_vars)
+# 
+# comp3_min <- sum(var_loadings$Dim.3 * min_val_vars)
+# comp3_max <- sum(var_loadings$Dim.3 * max_val_vars)
+# 
+# comp4_min <- sum(var_loadings$Dim.4 * min_val_vars)
+# comp4_max <- sum(var_loadings$Dim.4 * max_val_vars)
+# 
+# comp5_min <- sum(var_loadings$Dim.5 * min_val_vars)
+# comp5_max <- sum(var_loadings$Dim.5 * max_val_vars)
+# 
+# comp6_min <- sum(var_loadings$Dim.6 * min_val_vars)
+# comp6_max <- sum(var_loadings$Dim.6 * max_val_vars)
+```
+
+
+# Add demographic variables
+Background on data (more to come in the introduction): The data contains one observation per household, and the demographic variables are at the level of the household reference respondent. 
+
+**Household reference respondent Variables:** 
+*sex*: see codebook
+*age*: see codebook
+
+Education: 
+* *grad*: see codebook
+* *educ_cat*: 0 = "Less than High School", 1 = "High School Completed", 2 = "High School but less than BA", 3 = "Greater than BA"
+
+Race: 
+* *race*: see codebook
+* *race_cat*: 1 = "Non-Hispanic White", 1 = "Non-Hispanic Black", 2 = "Non-Hispanic Asian", 4 = "Non-Hispanic AI/Alaska/HPI", 5 = "Hispanic" 6"Mixed Race"
+* *race_cat_new*: 1 = "Non-Hispanic White", 2 = "Non-Hispanic Black", 3 = "Non-Hispanic Mixed", 4 = "Hispanic"
+
+Marital Status: 
+* *mar*: see codebook
+* *mar_cat*: 1 = "Married, SPOUSE Present/Absent", 2 = "Widowed", 3 = "Divorced/Separated", 4 = "Never married"
+* *hh_married*: 1 = "Married Couple", 0 = "Other Marital status"
+* *male_hh_married*: couple status of householder (0 = "Married-couple headship", 1 = "Lone Male head", 2 = "Lone Female head")
+
+Family type:
+* *famtyp*: see codebook
+* *fam_type*: 1 = "Married or cohabiting couple (male-female)", 2 = "Male head, no wife present", 3 = "Female head, no husband present", 4 = "Male householder living alone", 5 = "Female household living alone", 6 = "Male householder not living alone", 7 = "Female householder not living alone"
+* *fam_type_new*: 1 = "Married", 2 = "Female head", 3 = "Male Head"
+
+
+**Household variables**: 
+* *Tage65*: Total number of adults older than 65 in the household
+* *Yage65*: Household with at least one adult older than 65 (binary)
+* *Tchild18*: Total number of children under age 18 in household
+* *Ychild18*: Household with at least one child under age 18 (binary)
+* *hhld_type*: distinguishes beween households that have one family, multiples families vs. those that don't  (0 = "Non-family household", 1 = "Single family household",  2 = "Extended Household")
+
+Household size: 
+* *hhld_size*: household size, categorical (0 = "One person", 1 = "Two people", 2 = "Three or more")
+* *tot_famnum*: household size, continuous (see codebook)
+
+
+Additional Variables: 
+*control*: ID of each housing unit
+*data_year*: survey year
+*weight*: weighting variable. According to codebook, "use weight to produce National and metropolitan area estimates for all variables"
+
+
+
+```{r}
+df_dem_vars <- df_nona %>%
+  select(control, 
+         weight, 
+         data_year, 
+         sex, 
+         age, 
+         grad, educ_cat, 
+         race, race_cat, race_cat_new, 
+         mar, mar_cat, hh_married, male_hh_married, 
+         famtyp, fam_type, fam_type_new, 
+         Tage65, Yage65, 
+         Tchildle18, Ychildle18, 
+         hhld_type, 
+         hhld_size, tot_famnum)
+```
+
+```{r}
+# merge component scores and index with demographic variables
+df_index_demographic_vars <- cbind(df_dem_vars, df_index)
+
+# add new index to df
+df_two_indeces_demographic_vars <- df_index_demographic_vars %>%
+  mutate(housing_qual_index_alternative = hq_index2)
+```
+
+```{r, eval = FALSE}
+# save df
+saveRDS(df_two_indeces_demographic_vars, "~/AHS/Data/df_index_update.RDS")
+```
+
+
+
+
+
