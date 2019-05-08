@@ -1,6 +1,7 @@
 library(glmnet)
 library(dplyr)
 library(tidyr)
+library(ggplot2)
 
 data <- readRDS("/Users/lindechen/AHS/Data/train.RDS") 
 
@@ -20,14 +21,16 @@ y <- as.matrix(as.numeric(data[,"educ_cat"])) # only class
 
 # Fit the model
 set.seed(67)
-fit <- glmnet(x, y, alpha=1, family = "multinomial")
-plot(fit)
-
 cv.lasso <- cv.glmnet(x, y, alpha=1, family = "multinomial", type.measure = "deviance")
 
 # Results
+pdf("./base_model/CV_plot.pdf")
 plot(cv.lasso)
+dev.off()
+
+pdf("./base_model/response_plot.pdf")
 plot(cv.lasso$glmnet.fit, xvar="lambda", label=TRUE)
+dev.off()
 
 # all coef
 coef <- do.call(cbind, coef(cv.lasso, s = cv.lasso$lambda.1se)) # add 1 SE to obtain more parsimonious model
