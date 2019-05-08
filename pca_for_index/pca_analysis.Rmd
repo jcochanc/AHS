@@ -15,7 +15,7 @@ pacman::p_load(dplyr, tidyr, ggplot2, haven, corrplot, FactoMineR, factoextra, c
 ```
 
 # Take random sample of 20% of the data
-```{r}
+```{r, eval = FALSE}
 set.seed(14)
 
 # Read original data
@@ -92,8 +92,10 @@ vars_quality_index <- tolower(c(vars_zadeq_bathrooms, vars_zadeq_heating, vars_z
 
 # Select variables of interest
 df_quality_vars <- df_nona %>% select(vars_quality_index)
+```
 
-# Save the data_
+```{r, eval=FALSE}
+# Save the data
 saveRDS(df_quality_vars, "./Data/sample_df_20perc_vars_selected.RDS")
 ```
 
@@ -287,6 +289,71 @@ hist(std_hq_index, breaks=100)
 df_index <- scores %>% mutate(housing_qual_index = std_hq_index)
 ```
 
+# Alternative way to build the index
+```{r}
+# Compute variable loadings 
+var_loadings <- sweep(result_pca$var$coord,2,sqrt(result_pca$eig[1:ncol(result_pca$var$coord),1]),FUN="/")
+var_loadings <- data.frame(var_loadings)
+var_loadings$var <- rownames(var_loadings)
+rownames(var_loadings) <- c(1:nrow(var_loadings))
+var_loadings <- var_loadings %>% select(var, Dim.1, Dim.2, Dim.3, Dim.4, Dim.5, Dim.6)
+var_loadings
+
+# Find component "scores" for each individual based on the variable loadings and the individuals' variable value 
+indv_var_values <- as.matrix(df_quality_vars_lumped_reduced_num) # individuals' variable value
+comp1_score <- indv_var_values %*% var_loadings$Dim.1
+comp2_score <- indv_var_values %*% var_loadings$Dim.2
+comp3_score <- indv_var_values %*% var_loadings$Dim.3
+comp4_score <- indv_var_values %*% var_loadings$Dim.4
+comp5_score <- indv_var_values %*% var_loadings$Dim.5
+comp6_score <- indv_var_values %*% var_loadings$Dim.6
+
+
+# Convert scores to binary variables according to threshold (75% quartile)
+comp1_score_binary <- ifelse(comp1_score > quantile(comp1_score, c(0.75), na.rm = TRUE), 1, 0)
+comp2_score_binary <- ifelse(comp2_score > quantile(comp2_score, c(0.75), na.rm = TRUE), 1, 0)
+comp3_score_binary <- ifelse(comp3_score > quantile(comp3_score, c(0.75), na.rm = TRUE), 1, 0)
+comp4_score_binary <- ifelse(comp4_score > quantile(comp4_score, c(0.75), na.rm = TRUE), 1, 0)
+comp5_score_binary <- ifelse(comp5_score > quantile(comp5_score, c(0.75), na.rm = TRUE), 1, 0)
+comp6_score_binary <- ifelse(comp6_score > quantile(comp6_score, c(0.75), na.rm = TRUE), 1, 0)
+
+# Create index as the sum of the binary scores. The index should have a range 0 - 6. However, similar to what was seen in the first housing quality index that was created, only 0.04036582% of the data has scores above 4. Additionally, this method of creating the index does not account for missing values. A total of 3089 observations have missing values and, hence, are not assigned an index.
+
+hq_index2 <- comp1_score_binary + comp2_score_binary + comp3_score_binary + comp4_score_binary + comp5_score_binary + comp6_score_binary
+
+summary(hq_index2)
+length(which(hq_index2 > 4))*100/nrow(df_quality_vars_lumped_reduced_num) # only 0.04% of the data has scores above 4
+hist(hq_index2)
+
+length(which(is.na(hq_index2))) # observations missing index
+
+
+
+######### I computed min and max but don't think this is necessary ######### 
+# # Find "true" min and "true" max for each component based on min and max of each variable
+# # Find maximum and minimum value of the variables included
+# min_val_vars <- apply(df_quality_vars_lumped_reduced_num, 2, min, na.rm=TRUE)
+# max_val_vars <- apply(df_quality_vars_lumped_reduced_num, 2, max, na.rm=TRUE)
+# 
+# comp1_min <- sum(var_loadings$Dim.1 * min_val_vars)
+# comp1_max <- sum(var_loadings$Dim.1 * max_val_vars)
+# 
+# comp2_min <- sum(var_loadings$Dim.2 * min_val_vars)
+# comp2_max <- sum(var_loadings$Dim.2 * max_val_vars)
+# 
+# comp3_min <- sum(var_loadings$Dim.3 * min_val_vars)
+# comp3_max <- sum(var_loadings$Dim.3 * max_val_vars)
+# 
+# comp4_min <- sum(var_loadings$Dim.4 * min_val_vars)
+# comp4_max <- sum(var_loadings$Dim.4 * max_val_vars)
+# 
+# comp5_min <- sum(var_loadings$Dim.5 * min_val_vars)
+# comp5_max <- sum(var_loadings$Dim.5 * max_val_vars)
+# 
+# comp6_min <- sum(var_loadings$Dim.6 * min_val_vars)
+# comp6_max <- sum(var_loadings$Dim.6 * max_val_vars)
+```
+
 
 # Add demographic variables
 Background on data (more to come in the introduction): The data contains one observation per household, and the demographic variables are at the level of the household reference respondent. 
@@ -356,7 +423,17 @@ df_dem_vars <- df_nona %>%
 # merge component scores and index with demographic variables
 df_index_demographic_vars <- cbind(df_dem_vars, df_index)
 
-# save df
-saveRDS(df_index_demographic_vars, "./Data/df_index_demographic_vars.RDS")
+# add new index to df
+df_two_indeces_demographic_vars <- df_index_demographic_vars %>%
+  mutate(housing_qual_index_alternative = hq_index2)
 ```
+
+```{r, eval = FALSE}
+# save df
+saveRDS(df_two_indeces_demographic_vars, "./Data/df_two_indeces_demographic_vars.RDS")
+```
+
+
+
+
 
