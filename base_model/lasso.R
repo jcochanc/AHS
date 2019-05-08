@@ -3,7 +3,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-data <- readRDS("/Users/lindechen/AHS/Data/train.RDS") 
+data <- readRDS("./Data/train.RDS") 
 
 data <- data[,-1] # remove 'control', an ID variable
 data$sex <- data$sex-1 # make 'sex' a 0/1 binary variable
