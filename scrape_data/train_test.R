@@ -1,7 +1,7 @@
 pacman::p_load(dplyr)
 
 # Load in the data we will work with.
-df <- readRDS("./Data/df_two_indeces_demographic_vars.RDS")
+df <- readRDS("./Data/df_index_update.RDS")
 
 # Confirm by looking at the names.
 names(df) # Carolina also confirms.

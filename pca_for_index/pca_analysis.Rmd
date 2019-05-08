@@ -38,7 +38,7 @@ saveRDS(df_20perc, "./Data/sample_df_20perc.RDS")
 # Remove variables with more than 25% missing
 ```{r}
 # Load the sample data.
-df <- readRDS("./Data/sample_df_20perc.RDS")
+df <- readRDS("~/AHS/Data/sample_df_20perc.RDS")
 
 # Explore missingness
 sum(apply(df, 2, anyNA)) # 60 variables with any missingness.
@@ -102,7 +102,7 @@ saveRDS(df_quality_vars, "./Data/sample_df_20perc_vars_selected.RDS")
 
 # Data cleaning
 ```{r}
-df_quality_vars <- readRDS("./Data/sample_df_20perc_vars_selected.RDS")
+df_quality_vars <- readRDS("~/AHS/Data/sample_df_20perc_vars_selected.RDS")
 
 # According to the codebook: In 2011, the response codes changed from 'X' (positive response) to '1' (checked) and '2' (not checked). Change the X to 1 = checked response
 convert_X_to_1 <- function(x) {
@@ -204,7 +204,13 @@ pve <- as.data.frame(eigenvalues[1:6,])
 plot(x = c(1:6), y=pve[,3], main = "Cumulative Proportion of Variance Explained", xlab="Principal Component", ylab="Cumulative PVE", xlim = c(1, 6), ylim=c(0,60), type="b", col="red")
 ```
 
-Figures ___, ___, and ___ illustrate the correlation between and the contribution of each variable and the principal components. We see that the variables most correlated with the first component are those related to external structure problems, (i.e. *ecrumb*, *ebar*, *ebroke*, *eboard*, *emissw*, *eslopw*, *emissr*, *eholer*, and *esagr*). The second component is highly correlated with variables related to bathroom facilities (i.e. *toilet*, *tub*, *sink*), plumbling conditions (i.e. *plumb*, *sharpf*), and water availability (i.e. *ifdry*, *hotpip*). The third principal component is  correlated with inside and outside water leaks (i.e. *ileak*, *leak*), as well as with electrical circuit breakers (i.e. *iflow*). The fourth  component is correlated with variables related to the air conditioning and heating systems in the house (i.e. *airsys*, *air*, *hequip*, and *fplwk*). The fifth principal component represents kitchen  appliances (i.e. *kitchen*, *sink*, *refr*, *cook*). Finally, the sixth component represent sewage and water sources (i.e.*pubsew* and *water*). 
+Figures ___, ___, and ___ illustrate the correlation between and the contribution of each variable and the principal components. We see that the variables most correlated with the first component are those related to external structure problems, (i.e. *ecrumb*, *ebar*, *ebroke*, *eboard*, *emissw*, *eslopw*, *emissr*, *eholer*, and *esagr*). These suggest the lower quartile are good.
+
+The second component is highly correlated with variables related to bathroom facilities (i.e. *toilet*, *tub*, *sink*), plumbling conditions (i.e. *plumb*, *sharpf*), and water availability (i.e. *ifdry*, *hotpip*). 
+
+The third principal component is  correlated with inside and outside water leaks (i.e. *ileak*, *leak*), as well as with electrical circuit breakers (i.e. *iflow*). Positive values for these variables are bad quality housing. Therefore we need to look at the bottom quartile to determine good housing.
+
+The fourth  component is correlated with variables related to the air conditioning and heating systems in the house (i.e. *airsys*, *air*, *hequip*, and *fplwk*). The fifth principal component represents kitchen  appliances (i.e. *kitchen*, *sink*, *refr*, *cook*). Finally, the sixth component represent sewage and water sources (i.e.*pubsew* and *water*). 
 
 
 ```{r}
@@ -310,9 +316,9 @@ comp6_score <- indv_var_values %*% var_loadings$Dim.6
 
 
 # Convert scores to binary variables according to threshold (75% quartile)
-comp1_score_binary <- ifelse(comp1_score > quantile(comp1_score, c(0.75), na.rm = TRUE), 1, 0)
+comp1_score_binary <- ifelse(comp1_score < quantile(comp1_score, c(0.25), na.rm = TRUE), 1, 0)
 comp2_score_binary <- ifelse(comp2_score > quantile(comp2_score, c(0.75), na.rm = TRUE), 1, 0)
-comp3_score_binary <- ifelse(comp3_score > quantile(comp3_score, c(0.75), na.rm = TRUE), 1, 0)
+comp3_score_binary <- ifelse(comp3_score < quantile(comp3_score, c(0.25), na.rm = TRUE), 1, 0)
 comp4_score_binary <- ifelse(comp4_score > quantile(comp4_score, c(0.75), na.rm = TRUE), 1, 0)
 comp5_score_binary <- ifelse(comp5_score > quantile(comp5_score, c(0.75), na.rm = TRUE), 1, 0)
 comp6_score_binary <- ifelse(comp6_score > quantile(comp6_score, c(0.75), na.rm = TRUE), 1, 0)
@@ -430,7 +436,7 @@ df_two_indeces_demographic_vars <- df_index_demographic_vars %>%
 
 ```{r, eval = FALSE}
 # save df
-saveRDS(df_two_indeces_demographic_vars, "./Data/df_two_indeces_demographic_vars.RDS")
+saveRDS(df_two_indeces_demographic_vars, "~/AHS/Data/df_index_update.RDS")
 ```
 
 
