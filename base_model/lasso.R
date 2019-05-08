@@ -1,6 +1,7 @@
 library(glmnet) # load 'glmnet' package
+library(dplyr)
 
-data <- readRDS("./Data/df_index_demographic_vars.RDS") # read index and demographics data provided by Carolina
+data <- readRDS("/Users/lindechen/AHS/Data/df_two_indeces_demographic_vars.RDS") # read index and demographics data provided by Carolina
 
 data <- data[,-1] # remove 'control', an ID variable
 data$sex <- data$sex-1 # make 'sex' a 0/1 binary variable
@@ -10,7 +11,7 @@ data$weight <- (data$weight - mean(data$weight)) / sd(data$weight) # standardize
 ######################### perform LASSO regression on demographic variables #####################
 # Note: LASSO inherently performs variable selection by shrinking some coefficients to zero
 
-# 1. try with 'grad' (see codebook) - CONTINOUS OUTCOME VARIABLE
+######## 1. try with 'grad' (see codebook) - CONTINOUS outcome variable
 x <- as.matrix(data[,-c(5,6,24,25,26,27,28,29,30)]) # Removes class, educ_cat (redundant), dimension vars, index (both non-demographic)
 y <- as.double(as.matrix(data[, 5])) # Only class
 
@@ -29,7 +30,7 @@ nonzero_coef_grad <- data.frame(coef = coef[which(coef(cv.lasso, s=cv.lasso$lamb
 
 saveRDS(nonzero_coef_grad, "./Data/nonzero_coef_grad.RDS")
 
-# 2. try with `educ_cat` - MULTINOMIAL OUTCOME VARIABLE
+######## 2. try with `educ_cat` - MULTINOMIAL outcome variable
 x <- as.matrix(data[,-c(5,6,24,25,26,27,28,29,30)]) # Removes class, grad (redundant), dimension vars, index (both non-demographic)
 y <- as.matrix(as.numeric(data[, 6])) 
 
