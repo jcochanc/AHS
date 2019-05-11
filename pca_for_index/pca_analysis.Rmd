@@ -172,8 +172,11 @@ summary(df_quality_vars_lumped_reduced_num)
 
 # Plot correlations
 cor.mat <- round(cor(df_quality_vars_lumped_reduced_num, use = "complete.obs"),2)
+
+pdf("./pca_for_index/index_vars_correlation_plot.pdf") # save plot
 corrplot(cor.mat, type="upper", order="hclust", 
          tl.col="black", tl.srt=45)
+dev.off()
 ```
 
 
@@ -191,7 +194,9 @@ We choose the smallest number of principal components that explain a sizable amo
 
 ```{r}
 # Make a scree plot: Plot the percentage of variance explained by each component
+pdf("./pca_for_index/scree_plot.pdf") # save plot
 fviz_screeplot(result_pca, ncp=10)
+dev.off()
 ```
 
 ```{r}
@@ -201,7 +206,9 @@ eigenvalues <- result_pca$eig
 
 pve <- as.data.frame(eigenvalues[1:6,])
 
+pdf("./pca_for_index/cum_pve.pdf") # save plot
 plot(x = c(1:6), y=pve[,3], main = "Cumulative Proportion of Variance Explained", xlab="Principal Component", ylab="Cumulative PVE", xlim = c(1, 6), ylim=c(0,60), type="b", col="red")
+dev.off()
 ```
 
 Figures ___, ___, and ___ illustrate the correlation between and the contribution of each variable and the principal components. We see that the variables most correlated with the first component are those related to external structure problems, (i.e. *ecrumb*, *ebar*, *ebroke*, *eboard*, *emissw*, *eslopw*, *emissr*, *eholer*, and *esagr*). These suggest the lower quartile are good.
@@ -227,28 +234,33 @@ var_loadings <- sweep(result_pca$var$coord,2,sqrt(result_pca$eig[1:ncol(result_p
 # Contributions of the variables to the principal components. Variable contributions = (var.cos2 * 100) / (total cos2 of the component). Recall: The contribution of a point to the inertia of an axis is the quotient between the inertia of its projection and the inertia of the whole scatterplot's projection on this axis. 
 head(result_pca$var$contrib)
 
-# Plot variables and the correlations. The color gradient indicates variable contribution 
+# Plot variables and the correlations. The color gradient indicates variable contribution
+pdf("./pca_for_index/vars_comp12.pdf") # save plot
 fviz_pca_var(result_pca, 
              axes = c(1, 2),
              col.var="contrib", 
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
              repel = TRUE     # Avoid text overlapping
              )
+dev.off()
 
+pdf("./pca_for_index/vars_comp34.pdf") # save plot
 fviz_pca_var(result_pca, 
              axes = c(3, 4),
              col.var="contrib", 
              #repel = TRUE,    # Avoid text overlapping
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
              )
+dev.off
 
-
+pdf("./pca_for_index/vars_comp56.pdf") # save plot
 fviz_pca_var(result_pca, 
              axes = c(5, 6),
              col.var="contrib", 
              #repel = TRUE,     # Avoid text overlapping
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
              )
+dev.off
 ```
 
 
@@ -329,7 +341,17 @@ hq_index2 <- comp1_score_binary + comp2_score_binary + comp3_score_binary + comp
 
 summary(hq_index2)
 length(which(hq_index2 > 4))*100/nrow(df_quality_vars_lumped_reduced_num) # only 0.04% of the data has scores above 4
-hist(hq_index2)
+
+
+pdf("./pca_for_index/distribution_alternative_index.pdf") # save plot
+
+ggplot(as.data.frame(hq_index2)) +
+    geom_histogram(aes(x = V1),
+                   binwidth = 1, fill = "steelblue", color = "black") + 
+    xlab("Housing Quality Index Score") +
+    ggtitle("Distribution of Housing Quality Index") 
+
+dev.off()
 
 length(which(is.na(hq_index2))) # observations missing index
 
